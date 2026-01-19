@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 import pyodbc
 import os
 import logging
+from time import sleep
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -13,19 +16,29 @@ logger = logging.getLogger(__name__)
 
 app = func.FunctionApp()
 
-# Config from App Settings
-GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
-DAYS_BACK = int(os.environ.get('DAYS_BACK', 30))
-SYNAPSE_SERVER = os.getenv('SYNAPSE_SERVER')
-SYNAPSE_DB = os.getenv('SYNAPSE_DB')
-SYNAPSE_USER = os.getenv('SYNAPSE_USER')
-SYNAPSE_PASS = os.getenv('SYNAPSE_PASS')
+# Config from App Settings - Load GITHUB_TOKEN early for headers
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+DAYS_BACK = int(os.getenv('DAYS_BACK', 30))
 TABLE_NAME = os.getenv('TABLE_NAME', 'github_pull_requests')
 #REPOS = ['octocat/Hello-World', 'pallets/flask', 'microsoft/TypeScript']  # Provided repos; add health ones like 'WHO/world-health-data'
-#REPOS = ['Brahma6/testing_repo']  # For testing
-REPOS = ['microsoft/TypeScript']  # For testing
+REPOS = ['Brahma6/testing_repo']  # For testing
+#REPOS = ['microsoft/TypeScript']  # For testing
 
 headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
+
+def create_session_with_retries():
+    """Create a requests session with retry strategy for network resilience."""
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 def fetch_prs(repo: str, since: str = None) :
     """Fetch PRs for repo, paginated, optional since date (ISO format)."""
@@ -35,18 +48,32 @@ def fetch_prs(repo: str, since: str = None) :
         url += f'&since={since}'
     all_prs = []
     page = 1
-    while True:
-        page_url = f'{url}&page={page}'
-        resp = requests.get(page_url, headers=headers)
-        if resp.status_code != 200:
-            logger.error(f'Error {resp.status_code} for {repo}: {resp.text}')
-            break
-        prs = resp.json()
-        if not prs:
-            break
-        all_prs.extend(prs)
-        page += 1
-        logger.info(f'Fetched {len(prs)} PRs from page {page} for {repo}')
+    session = create_session_with_retries()
+    
+    try:
+        while True:
+            page_url = f'{url}&page={page}'
+            try:
+                resp = session.get(page_url, headers=headers, timeout=30)
+                if resp.status_code != 200:
+                    logger.error(f'Error {resp.status_code} for {repo}: {resp.text}')
+                    break
+                prs = resp.json()
+                if not prs:
+                    break
+                all_prs.extend(prs)
+                page += 1
+                logger.info(f'Fetched {len(prs)} PRs from page {page} for {repo}')
+            except requests.exceptions.ChunkedEncodingError as e:
+                logger.warning(f'ChunkedEncodingError on page {page} for {repo}: {e}. Retrying...')
+                sleep(2)  # Wait before retry
+                continue
+            except requests.exceptions.RequestException as e:
+                logger.error(f'Request error on page {page} for {repo}: {e}')
+                break
+    finally:
+        session.close()
+    
     return all_prs
 
 def clean_pr_data(prs) -> pd.DataFrame:
@@ -107,7 +134,7 @@ def clean_pr_data(prs) -> pd.DataFrame:
 def load_to_synapse(df: pd.DataFrame, conn_str: str):
     """Append to Synapse table; create if missing."""
     print("Inside load_to_synapse function")
-    TABLE_NAME = os.environ.get('TABLE_NAME', 'github_pull_requests')
+    TABLE_NAME = os.getenv('TABLE_NAME', 'github_pull_requests')
     
     # Check available ODBC drivers
     available_drivers = pyodbc.drivers()
@@ -125,9 +152,6 @@ def load_to_synapse(df: pd.DataFrame, conn_str: str):
         logger.error(f'No SQL Server ODBC driver found. Available drivers: {available_drivers}')
         logger.warning('Skipping Synapse load. Please install ODBC Driver 18 for SQL Server.')
         return
-    
-    # Rebuild connection string with available driver
-    conn_str = f'DRIVER={{{driver_name}}};SERVER={SYNAPSE_SERVER};DATABASE={SYNAPSE_DB};UID={SYNAPSE_USER};PWD={SYNAPSE_PASS};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
     
     try:
         conn = pyodbc.connect(conn_str)
@@ -181,28 +205,51 @@ def load_to_synapse(df: pd.DataFrame, conn_str: str):
         logger.error(f'Error connecting to Synapse: {e}')
         logger.warning('Skipping Synapse load due to connection error.')
 
-@app.timer_trigger(schedule="0 0 9 * * *", arg_name="myTimer", run_on_startup_every=1440, 
+@app.timer_trigger(schedule="0 0 9 * * *", arg_name="myTimer", run_on_startup=True, 
                    use_monitor=False)  # Daily at 9AM UTC
 def github_pr_pipeline(myTimer: func.TimerRequest) -> None:
     logging.info('GitHub PR Pipeline triggered.')
     
-
+    # Synapse connection config
+    synapse_server = os.getenv('SYNAPSE_SERVER')
+    synapse_db = os.getenv('SYNAPSE_DB')
+    synapse_user = os.getenv('SYNAPSE_USER')
+    synapse_pass = os.getenv('SYNAPSE_PASS')
     
-    # Synapse conn via Managed Identity (assign "Synapse SQL Administrator" role to Function MSI)
-    conn_str = (
-        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-        f"SERVER={os.environ['SYNAPSE_SERVER']};"
-        f"DATABASE={os.environ['SYNAPSE_DB']};"
-        f"Authentication=ActiveDirectoryMsi;"
-    )
+    if not synapse_server or not synapse_db:
+        logger.error('SYNAPSE_SERVER or SYNAPSE_DB not configured')
+        return
+    
+    # Build connection string based on available credentials
+    # Use SQL authentication for local development, Managed Identity for Azure
+    if synapse_user and synapse_pass:
+        # SQL authentication for local/development
+        conn_str = (
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+            f"SERVER={synapse_server};"
+            f"DATABASE={synapse_db};"
+            f"UID={synapse_user};"
+            f"PWD={synapse_pass};"
+            f"Encrypt=yes;"
+            f"TrustServerCertificate=no;"
+            f"Connection Timeout=30;"
+        )
+    else:
+        # Managed Identity for Azure
+        conn_str = (
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+            f"SERVER={synapse_server};"
+            f"DATABASE={synapse_db};"
+            f"Authentication=ActiveDirectoryMsi;"
+        )
     
     # Fetch & process (same logic as before)
     since_date = (datetime.utcnow() - timedelta(days=DAYS_BACK)).isoformat() + 'Z'
     all_data = []
     
     for repo in REPOS:
-        prs = fetch_prs(repo, since_date, headers)  # Your fetch_prs function here
-        df_repo = clean_pr_data(prs)  # Your clean_pr_data function here
+        prs = fetch_prs(repo, since_date)
+        df_repo = clean_pr_data(prs)
         df_repo['repo_full_name'] = repo
         all_data.append(df_repo)
     

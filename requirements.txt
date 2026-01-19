@@ -1,4 +1,4 @@
-pyodbc=4.0.34
+pyodbc
 pandas=1.5.3
 requests==2.31.0
 azure-identity==1.17.0
