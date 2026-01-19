@@ -1,0 +1,7 @@
+pyodbc=4.0.34
+pandas=1.5.3
+requests==2.31.0
+azure-identity==1.17.0
+azure-synapse==0.1.0
+python-dotenv==1.0.1
+azure-functions==1.15.0
