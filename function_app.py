@@ -22,7 +22,8 @@ SYNAPSE_USER = os.getenv('SYNAPSE_USER')
 SYNAPSE_PASS = os.getenv('SYNAPSE_PASS')
 TABLE_NAME = os.getenv('TABLE_NAME', 'github_pull_requests')
 #REPOS = ['octocat/Hello-World', 'pallets/flask', 'microsoft/TypeScript']  # Provided repos; add health ones like 'WHO/world-health-data'
-REPOS = ['Brahma6/testing_repo']  # For testing
+#REPOS = ['Brahma6/testing_repo']  # For testing
+REPOS = ['microsoft/TypeScript']  # For testing
 
 headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
 
