@@ -205,7 +205,7 @@ def load_to_synapse(df: pd.DataFrame, conn_str: str):
         logger.error(f'Error connecting to Synapse: {e}')
         logger.warning('Skipping Synapse load due to connection error.')
 
-@app.timer_trigger(schedule="25 4 * * * *", arg_name="myTimer", run_on_startup=True, 
+@app.timer_trigger(schedule="37 4 * * *", arg_name="myTimer", run_on_startup=True, 
                    use_monitor=False)  # Daily at 9AM UTC
 def github_pr_pipeline(myTimer: func.TimerRequest) -> None:
     logging.info('GitHub PR Pipeline triggered.')
