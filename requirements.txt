@@ -1,0 +1,7 @@
+pyodbc
+pandas
+requests
+azure-identity
+azure-synapse
+python-dotenv
+azure-functions
