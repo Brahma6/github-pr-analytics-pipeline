@@ -17,7 +17,7 @@ REPOS = os.getenv('REPOS', 'Brahma6/testing_repo').split(',')    # For testing
 #REPOS = ['microsoft/TypeScript']  # For testing
 
 app = func.FunctionApp()
-@app.timer_trigger(schedule="0 9 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False)  # Daily at 9AM UTC
+@app.timer_trigger(schedule="* * * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False)  # Daily at 9AM UTC
 
 def github_pr_pipeline(myTimer: func.TimerRequest) -> None:
     logging.info('GitHub PR Pipeline triggered.')
@@ -61,6 +61,8 @@ def github_pr_pipeline(myTimer: func.TimerRequest) -> None:
     
     for repo in REPOS:
         prs = fcl.fetch_prs(repo, since_date)
+        print("prs:",len(prs))
+        print(prs)
         df_repo = fcl.clean_pr_data(prs)
         df_repo['repo_full_name'] = repo
         all_data.append(df_repo)
