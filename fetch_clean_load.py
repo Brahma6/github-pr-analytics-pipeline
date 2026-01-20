@@ -14,9 +14,11 @@ from urllib3.util.retry import Retry
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Config from App Settings - Load GITHUB_TOKEN early for headers
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 REPOS = os.getenv('REPOS', 'Brahma6/testing_repo').split(',')   # Default repo for testing
 headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
+TABLE_NAME = os.getenv('TABLE_NAME', 'github_pull_requests')
 
 def create_session_with_retries():
     """Create a requests session with retry strategy for network resilience."""

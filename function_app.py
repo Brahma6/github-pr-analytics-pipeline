@@ -1,28 +1,20 @@
 import logging
 import azure.functions as func
-import requests
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-import pyodbc
 import os
 import logging
 from time import sleep
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import fetch_clean_load as fcl # Import fetch, clean and Load functions
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Config from App Settings - Load GITHUB_TOKEN early for headers
-GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+# Config from App Settings
 DAYS_BACK = int(os.getenv('DAYS_BACK', 30))
-TABLE_NAME = os.getenv('TABLE_NAME', 'github_pull_requests')
 REPOS = os.getenv('REPOS', 'Brahma6/testing_repo').split(',')    # For testing
 #REPOS = ['microsoft/TypeScript']  # For testing
-
-headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
 
 app = func.FunctionApp()
 @app.timer_trigger(schedule="0 9 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=False)  # Daily at 9AM UTC
