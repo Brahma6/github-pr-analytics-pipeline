@@ -88,7 +88,7 @@ Create a `local.settings.json` file in the project root with your credentials:
     "GITHUB_TOKEN": "github_pat_YOUR_TOKEN_HERE",
     "SYNAPSE_SERVER": "tcp:your-server.sql.azuresynapse.net",
     "SYNAPSE_DB": "your_database_name",
-    "SYNAPSE_USER": "sqladmin",
+    "SYNAPSE_USER": "sqladminuser",
     "SYNAPSE_PASS": "your_password_here",
     "TABLE_NAME": "github_pull_requests",
     "DAYS_BACK": "30"
@@ -174,7 +174,7 @@ This will:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `GITHUB_TOKEN` | GitHub Personal Access Token | `github_pat_11AC...` |
+| `GITHUB_TOKEN`   | GitHub Personal Access Token | `github_pat_11AC...` |
 | `SYNAPSE_SERVER` | Azure Synapse server address | `tcp:gitpranalytics.sql.azuresynapse.net` |
 | `SYNAPSE_DB` | Database name | `githubprpool` |
 | `SYNAPSE_USER` | SQL username (local dev only) | `sqladminpr` |
@@ -251,3 +251,4 @@ The timer trigger uses CRON expression format:
 - ✅ Rotate GitHub PAT and database passwords regularly
 - ✅ Use least-privilege access for database users
 - ✅ Monitor function execution logs in Azure Monitor
+
